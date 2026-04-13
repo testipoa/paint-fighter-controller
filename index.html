@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Paint-Fighter — Manette</title>
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
+    body { background:#111; color:#fff; font-family:Arial,sans-serif; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+
+    /* ── Écran connexion ── */
+    #ecran-connexion { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; height:100%; padding:24px; }
+    #ecran-connexion h1 { font-size:2rem; }
+    input { width:100%; max-width:320px; padding:14px; border-radius:12px; border:2px solid #444; font-size:1.1rem; background:#222; color:#fff; }
+    .grille-equipes { display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:320px; }
+    .bouton-equipe { padding:18px; border-radius:14px; border:3px solid transparent; font-size:1.1rem; font-weight:bold; cursor:pointer; color:#fff; }
+    .bouton-equipe.selectionne { border-color:#fff; }
+    #btn-rouge  { background:#c0392b; }
+    #btn-bleu   { background:#2980b9; }
+    #btn-vert   { background:#27ae60; }
+    #btn-jaune  { background:#f39c12; color:#111; }
+    #btn-jouer  { width:100%; max-width:320px; padding:18px; border-radius:14px; background:#fff; color:#111; border:none; font-size:1.2rem; font-weight:bold; cursor:pointer; }
+    #erreur     { color:#e74c3c; display:none; }
+
+    /* ── Écran jeu ── */
+    #ecran-jeu { display:none; flex-direction:column; height:100%; }
+    #barre-haut { display:flex; justify-content:space-between; align-items:center; padding:8px 16px; background:#1a1a1a; }
+    #barre-haut span { font-size:.9rem; opacity:.7; }
+    #point-statut { width:10px; height:10px; border-radius:50%; background:#e74c3c; display:inline-block; margin-right:6px; }
+    #point-statut.connecte { background:#2ecc71; }
+
+    /* Zone de jeu avec les 2 joysticks */
+    #zone-jeu {
+      flex:1; display:flex;
+      align-items:center; justify-content:space-between;
+      padding:20px; gap:10px;
+    }
+
+    /* Style commun aux 2 joysticks */
+    .zone-joystick {
+      width:min(38vw, 180px); height:min(38vw, 180px);
+      background:rgba(255,255,255,.07); border-radius:50%;
+      border:2px solid rgba(255,255,255,.15);
+      position:relative; touch-action:none; flex-shrink:0;
+    }
+    .boule-joystick {
+      width:60px; height:60px; border-radius:50%;
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+    }
+    #boule-gauche { background:var(--couleur-equipe,#fff); box-shadow:0 0 15px var(--couleur-equipe,#fff); }
+    #boule-droite { background:rgba(255,255,255,0.6); box-shadow:0 0 15px rgba(255,255,255,0.4); }
+
+    /* Indicateur de tir au centre */
+    #zone-centre {
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:8px;
+    }
+    #indicateur-recharge {
+      width:60px; height:60px; border-radius:50%;
+      border:3px solid rgba(255,255,255,.2);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.7rem; text-align:center; opacity:.7;
+      position:relative; overflow:hidden;
+    }
+    #recharge-arc {
+      position:absolute; inset:0; border-radius:50%;
+      background: conic-gradient(var(--couleur-equipe,#fff) 0%, transparent 0%);
+      transition: background .1s;
+    }
+    #texte-recharge { position:relative; z-index:1; font-size:.65rem; }
+    #label-gauche { font-size:.7rem; opacity:.5; }
+    #label-droite { font-size:.7rem; opacity:.5; }
+
+    #barre-bas { padding:8px 20px; background:#1a1a1a; text-align:center; font-size:.8rem; opacity:.5; }
+  </style>
+</head>
+<body>
+
+<!-- ══ CONNEXION ══ -->
+<div id="ecran-connexion">
+  <h1>🎨 Paint-Fighter</h1>
+  <input id="champ-pseudo" type="text" placeholder="Ton pseudo" maxlength="12" autocomplete="off"/>
+  <div class="grille-equipes">
+    <button class="bouton-equipe selectionne" id="btn-rouge" onclick="choisirEquipe('red',this)">🔴 Rouge</button>
+    <button class="bouton-equipe"             id="btn-bleu"  onclick="choisirEquipe('blue',this)">🔵 Bleu</button>
+    <button class="bouton-equipe"             id="btn-vert"  onclick="choisirEquipe('green',this)">🟢 Vert</button>
+    <button class="bouton-equipe"             id="btn-jaune" onclick="choisirEquipe('yellow',this)">🟡 Jaune</button>
+  </div>
+  <button id="btn-jouer" onclick="rejoindre()">Rejoindre !</button>
+  <p id="erreur">Choisis un pseudo !</p>
+</div>
+
+<!-- ══ JEU ══ -->
+<div id="ecran-jeu">
+  <div id="barre-haut">
+    <span><span id="point-statut"></span><span id="texte-statut">Connexion...</span></span>
+    <span id="info-joueur">—</span>
+  </div>
+
+  <div id="zone-jeu">
+    <!-- Joystick GAUCHE → déplacement -->
+    <div class="zone-joystick" id="zone-gauche">
+      <div class="boule-joystick" id="boule-gauche"></div>
+    </div>
+
+    <!-- Centre → indicateur de recharge -->
+    <div id="zone-centre">
+      <span id="label-gauche">🕹 Bouger</span>
+      <div id="indicateur-recharge">
+        <div id="recharge-arc"></div>
+        <span id="texte-recharge">Prêt!</span>
+      </div>
+      <span id="label-droite">🎯 Tirer</span>
+    </div>
+
+    <!-- Joystick DROIT → visée + tir au relâchement -->
+    <div class="zone-joystick" id="zone-droite">
+      <div class="boule-joystick" id="boule-droite"></div>
+    </div>
+  </div>
+
+  <div id="barre-bas">Relâche le joystick droit pour tirer !</div>
+</div>
+
+<script>
+// ══ CONFIG ════════════════════════════════════════════════════════════════════
+const CLE_ABLY        = 'QBQUzw.lH921A:hAHTowTy0mKIJb7T92JHlEIccdFoP1NfHYrxBhJ8KgQ';
+const NOM_CANAL       = 'inputs';
+const INTERVALLE_MS   = 100;  
+const DELAI_RECHARGE  = 3; // Réduit à 3s pour le test, remets 20 si besoin
+
+// ══ VARIABLES ═════════════════════════════════════════════════════════════════
+let equipeChoisie  = 'red';
+let idJoueur       = null;
+let pseudo         = '';
+let canalAbly      = null;
+let minuteurEnvoi  = null;
+
+let touchIdGauche = null;
+let touchIdDroite = null;
+
+// Joystick gauche (déplacement)
+let gaucheActif    = false;
+let deplX = 0, deplY = 0;
+
+// Joystick droit (visée)
+let droiteActif    = false;
+let viseX = 0, viseY = 0;
+let debutCharge = 0;
+let niveauCharge = 0;
+let dernierEnvoiVisee = 0;
+
+// Recharge du tir
+let peutTirer      = true;
+const COULEURS = { red:'#c0392b', blue:'#2980b9', green:'#27ae60', yellow:'#f39c12' };
+
+const zoneGauche  = document.getElementById('zone-gauche');
+const bouleGauche = document.getElementById('boule-gauche');
+const zoneDroite  = document.getElementById('zone-droite');
+const bouleDroite = document.getElementById('boule-droite');
+
+// ══ FONCTIONS SYSTÈME ════════════════════════════════════════════════════════
+function choisirEquipe(equipe, bouton) {
+  equipeChoisie = equipe;
+  document.querySelectorAll('.bouton-equipe').forEach(b => b.classList.remove('selectionne'));
+  bouton.classList.add('selectionne');
+}
+
+function rejoindre() {
+  pseudo = document.getElementById('champ-pseudo').value.trim();
+  if (!pseudo) { document.getElementById('erreur').style.display='block'; return; }
+  idJoueur = Math.random().toString(36).substring(2, 10);
+  document.documentElement.style.setProperty('--couleur-equipe', COULEURS[equipeChoisie]);
+  document.getElementById('ecran-connexion').style.display = 'none';
+  document.getElementById('ecran-jeu').style.display = 'flex';
+  seConnecterAbly();
+}
+
+function seConnecterAbly() {
+  const connexion = new Ably.Realtime({ key: CLE_ABLY });
+  canalAbly = connexion.channels.get(NOM_CANAL);
+  connexion.connection.on('connected', () => {
+    mettreAJourStatut('Connecté !', true);
+    publier({ type: 'join' });
+    minuteurEnvoi = setInterval(envoyerInputs, INTERVALLE_MS);
+  });
+}
+
+function publier(donnees) {
+  if (!canalAbly) return;
+  canalAbly.publish('input', JSON.stringify({ ...donnees, clientId: idJoueur, name: pseudo, team: equipeChoisie }));
+}
+
+function envoyerInputs() {
+  if (!gaucheActif) return;
+  publier({ type: 'input', x: parseFloat(deplX.toFixed(3)), y: parseFloat(deplY.toFixed(3)) });
+}
+
+function mettreAJourStatut(texte, ok) {
+  document.getElementById('texte-statut').textContent = texte;
+  const pt = document.getElementById('point-statut');
+  ok ? pt.classList.add('connecte') : pt.classList.remove('connecte');
+}
+
+// ══ LOGIQUE GAUCHE ═══════════════════════════════════════════════════════════
+function deplacerBouleGauche(cx, cy) {
+  const rect = zoneGauche.getBoundingClientRect();
+  const centreX = rect.left + rect.width / 2;
+  const centreY = rect.top + rect.height / 2;
+  const dx = cx - centreX, dy = cy - centreY;
+  const maxR = rect.width / 2 - bouleGauche.offsetWidth / 2;
+  const dist = Math.sqrt(dx*dx + dy*dy), angle = Math.atan2(dy, dx);
+  const clamp = Math.min(dist, maxR);
+
+  bouleGauche.style.transform = `translate(calc(-50% + ${Math.cos(angle)*clamp}px), calc(-50% + ${Math.sin(angle)*clamp}px))`;
+  deplX = dx / (rect.width / 2);
+  deplY = -dy / (rect.height / 2);
+}
+
+function reinitBouleGauche() {
+  bouleGauche.style.transform = 'translate(-50%, -50%)';
+  deplX = 0; deplY = 0;
+  publier({ type: 'input', x: 0, y: 0 });
+}
+
+// ══ LOGIQUE DROITE ═══════════════════════════════════════════════════════════
+function deplacerBouleDroite(cx, cy) {
+  const rect = zoneDroite.getBoundingClientRect();
+  const centreX = rect.left + rect.width / 2;
+  const centreY = rect.top + rect.height / 2;
+  const dx = cx - centreX, dy = cy - centreY;
+  const maxR = rect.width / 2 - bouleDroite.offsetWidth / 2;
+  const dist = Math.sqrt(dx*dx + dy*dy), angle = Math.atan2(dy, dx);
+  const clamp = Math.min(dist, maxR);
+
+  bouleDroite.style.transform = `translate(calc(-50% + ${Math.cos(angle)*clamp}px), calc(-50% + ${Math.sin(angle)*clamp}px))`;
+  
+  viseX = dx / (rect.width / 2);
+  viseY = -dy / (rect.height / 2);
+
+  if (debutCharge === 0) debutCharge = Date.now();
+  niveauCharge = Math.min((Date.now() - debutCharge) / 1500, 1);
+  bouleDroite.style.backgroundColor = `rgb(255, ${255 * (1 - niveauCharge)}, ${255 * (1 - niveauCharge)})`;
+
+  if (Date.now() - dernierEnvoiVisee > 100) {
+    publier({ type: 'shoot', dirX: parseFloat(viseX.toFixed(3)), dirY: parseFloat(viseY.toFixed(3)), isFinal: false, charge: parseFloat(niveauCharge.toFixed(2)) });
+    dernierEnvoiVisee = Date.now();
+  }
+}
+
+function reinitBouleDroite() {
+  if (viseX !== 0 || viseY !== 0) {
+    tirer(viseX, viseY, niveauCharge);
+  }
+  bouleDroite.style.transform = 'translate(-50%, -50%)';
+  bouleDroite.style.backgroundColor = "rgba(255,255,255,0.6)";
+  debutCharge = 0; niveauCharge = 0; viseX = 0; viseY = 0;
+}
+
+function tirer(dirX, dirY, puissance) {
+  if (!peutTirer) return;
+  publier({ type: 'shoot', dirX: parseFloat(dirX.toFixed(3)), dirY: parseFloat(dirY.toFixed(3)), isFinal: true, charge: puissance });
+
+  peutTirer = false;
+  let t = DELAI_RECHARGE;
+  const txt = document.getElementById('texte-recharge');
+  const arc = document.getElementById('recharge-arc');
+  const inv = setInterval(() => {
+    t--;
+    const p = ((DELAI_RECHARGE - t) / DELAI_RECHARGE) * 100;
+    arc.style.background = `conic-gradient(var(--couleur-equipe) ${p}%, rgba(255,255,255,0.1) ${p}%)`;
+    if (t <= 0) { clearInterval(inv); peutTirer = true; txt.textContent = "Prêt!"; arc.style.background = "none"; }
+    else { txt.textContent = t + "s"; }
+  }, 1000);
+}
+
+// ══ TOUCHES ══════════════════════════════════════════════════════════════════
+document.addEventListener('touchstart', e => {
+  for (const t of e.changedTouches) {
+    if (t.clientX < window.innerWidth / 2 && touchIdGauche === null) {
+      touchIdGauche = t.identifier;
+      gaucheActif = true;
+      deplacerBouleGauche(t.clientX, t.clientY);
+    } else if (t.clientX >= window.innerWidth / 2 && touchIdDroite === null) {
+      touchIdDroite = t.identifier;
+      droiteActif = true;
+      deplacerBouleDroite(t.clientX, t.clientY);
+    }
+  }
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchIdGauche) deplacerBouleGauche(t.clientX, t.clientY);
+    if (t.identifier === touchIdDroite) deplacerBouleDroite(t.clientX, t.clientY);
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchIdGauche) {
+      touchIdGauche = null; gaucheActif = false;
+      reinitBouleGauche();
+    } else if (t.identifier === touchIdDroite) {
+      touchIdDroite = null; droiteActif = false;
+      reinitBouleDroite();
+    }
+  }
+});
+</script>
+</body>
+</html>
