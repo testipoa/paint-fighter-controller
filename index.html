@@ -299,10 +299,12 @@ function seConnecterLocal() {
     minuteurEnvoi = setInterval(envoyerInputs, INTERVALLE_MS);
   };
 
-  webSocket.onerror = (e) => {
+webSocket.onerror = (e) => {
     mettreAJourStatut('Erreur WebSocket', false);
+    // Affiche l'erreur dans la console et dans le statut
     console.error('WebSocket error', e);
-  };
+    document.getElementById('texte-statut').textContent = 'Erreur WebSocket (voir console)';
+};
 
   webSocket.onclose = () => {
     mettreAJourStatut('Déconnecté', false);
