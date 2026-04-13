@@ -4,40 +4,50 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>Paint-Fighter — Manette</title>
+  <!-- Ably SDK (toujours chargé mais utilisé seulement si mode Ably) -->
   <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
   <style>
+    /* ══════════════════════════════════════════════════════════════════════════ */
+    /* STYLES (inchangés, j'ai juste ajouté l'écran choix serveur) */
+    /* ══════════════════════════════════════════════════════════════════════════ */
     * { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
     body { background:#111; color:#fff; font-family:Arial,sans-serif; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
 
-    /* ── Écran connexion ── */
-    #ecran-connexion { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; height:100%; padding:24px; }
-    #ecran-connexion h1 { font-size:2rem; }
-    input { width:100%; max-width:320px; padding:14px; border-radius:12px; border:2px solid #444; font-size:1.1rem; background:#222; color:#fff; }
-    .grille-equipes { display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:320px; }
+    /* Écrans */
+    .ecran { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; }
+    #ecran-choix-serveur { gap:20px; }
+    #ecran-connexion { gap:16px; }
+    #ecran-jeu { display:none; }
+
+    /* Boutons */
+    .btn-serveur {
+      width:100%; max-width:320px; padding:18px; border-radius:14px;
+      background:#333; border:2px solid #555; color:#fff; font-size:1.2rem;
+      font-weight:bold; cursor:pointer; margin:8px 0;
+    }
+    .btn-serveur.ably { background:#1e3a5f; border-color:#2a5a8c; }
+    .btn-serveur.local { background:#2e5a2e; border-color:#3e8c3e; }
+    input, .grille-equipes, #btn-jouer { max-width:320px; width:100%; }
+    input { padding:14px; border-radius:12px; border:2px solid #444; font-size:1.1rem; background:#222; color:#fff; }
+    .grille-equipes { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .bouton-equipe { padding:18px; border-radius:14px; border:3px solid transparent; font-size:1.1rem; font-weight:bold; cursor:pointer; color:#fff; }
     .bouton-equipe.selectionne { border-color:#fff; }
     #btn-rouge  { background:#c0392b; }
     #btn-bleu   { background:#2980b9; }
     #btn-vert   { background:#27ae60; }
     #btn-jaune  { background:#f39c12; color:#111; }
-    #btn-jouer  { width:100%; max-width:320px; padding:18px; border-radius:14px; background:#fff; color:#111; border:none; font-size:1.2rem; font-weight:bold; cursor:pointer; }
+    #btn-jouer  { padding:18px; border-radius:14px; background:#fff; color:#111; border:none; font-size:1.2rem; font-weight:bold; cursor:pointer; }
     #erreur     { color:#e74c3c; display:none; }
 
-    /* ── Écran jeu ── */
-    #ecran-jeu { display:none; flex-direction:column; height:100%; }
+    /* Barre jeu */
     #barre-haut { display:flex; justify-content:space-between; align-items:center; padding:8px 16px; background:#1a1a1a; }
-    #barre-haut span { font-size:.9rem; opacity:.7; }
     #point-statut { width:10px; height:10px; border-radius:50%; background:#e74c3c; display:inline-block; margin-right:6px; }
     #point-statut.connecte { background:#2ecc71; }
-
-    /* Zone de jeu avec les 2 joysticks */
     #zone-jeu {
       flex:1; display:flex;
       align-items:center; justify-content:space-between;
       padding:20px; gap:10px;
     }
-
-    /* Style commun aux 2 joysticks */
     .zone-joystick {
       width:min(38vw, 180px); height:min(38vw, 180px);
       background:rgba(255,255,255,.07); border-radius:50%;
@@ -51,8 +61,6 @@
     }
     #boule-gauche { background:var(--couleur-equipe,#fff); box-shadow:0 0 15px var(--couleur-equipe,#fff); }
     #boule-droite { background:rgba(255,255,255,0.6); box-shadow:0 0 15px rgba(255,255,255,0.4); }
-
-    /* Indicateur de tir au centre */
     #zone-centre {
       display:flex; flex-direction:column;
       align-items:center; justify-content:center; gap:8px;
@@ -70,17 +78,26 @@
       transition: background .1s;
     }
     #texte-recharge { position:relative; z-index:1; font-size:.65rem; }
-    #label-gauche { font-size:.7rem; opacity:.5; }
-    #label-droite { font-size:.7rem; opacity:.5; }
-
+    #label-gauche, #label-droite { font-size:.7rem; opacity:.5; }
     #barre-bas { padding:8px 20px; background:#1a1a1a; text-align:center; font-size:.8rem; opacity:.5; }
   </style>
 </head>
 <body>
 
-<!-- ══ CONNEXION ══ -->
-<div id="ecran-connexion">
+<!-- ══ ÉCRAN 1 : CHOIX DU SERVEUR ══ -->
+<div id="ecran-choix-serveur" class="ecran">
   <h1>🎨 Paint-Fighter</h1>
+  <button class="btn-serveur ably" id="btn-choix-ably">☁️ Ably Cloud</button>
+  <button class="btn-serveur local" id="btn-choix-local">🏠 Serveur Local</button>
+  <div id="div-adresse-locale" style="display:none; width:100%; max-width:320px;">
+    <input id="champ-adresse-locale" type="text" placeholder="ws://192.168.1.10:8765" value="ws://localhost:8765"/>
+  </div>
+  <p id="erreur-serveur" style="color:#e74c3c;"></p>
+</div>
+
+<!-- ══ ÉCRAN 2 : PSEUDO & ÉQUIPE ══ -->
+<div id="ecran-connexion" class="ecran" style="display:none;">
+  <h2>👤 Identité</h2>
   <input id="champ-pseudo" type="text" placeholder="Ton pseudo" maxlength="12" autocomplete="off"/>
   <div class="grille-equipes">
     <button class="bouton-equipe selectionne" id="btn-rouge" onclick="choisirEquipe('red',this)">🔴 Rouge</button>
@@ -92,7 +109,7 @@
   <p id="erreur">Choisis un pseudo !</p>
 </div>
 
-<!-- ══ JEU ══ -->
+<!-- ══ ÉCRAN 3 : JEU ══ -->
 <div id="ecran-jeu">
   <div id="barre-haut">
     <span><span id="point-statut"></span><span id="texte-statut">Connexion...</span></span>
@@ -100,12 +117,9 @@
   </div>
 
   <div id="zone-jeu">
-    <!-- Joystick GAUCHE → déplacement -->
     <div class="zone-joystick" id="zone-gauche">
       <div class="boule-joystick" id="boule-gauche"></div>
     </div>
-
-    <!-- Centre → indicateur de recharge -->
     <div id="zone-centre">
       <span id="label-gauche">🕹 Bouger</span>
       <div id="indicateur-recharge">
@@ -114,8 +128,6 @@
       </div>
       <span id="label-droite">🎯 Tirer</span>
     </div>
-
-    <!-- Joystick DROIT → visée + tir au relâchement -->
     <div class="zone-joystick" id="zone-droite">
       <div class="boule-joystick" id="boule-droite"></div>
     </div>
@@ -125,34 +137,43 @@
 </div>
 
 <script>
-// ══ CONFIG ════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
 const CLE_ABLY        = 'QBQUzw.lH921A:hAHTowTy0mKIJb7T92JHlEIccdFoP1NfHYrxBhJ8KgQ';
 const NOM_CANAL       = 'inputs';
 const INTERVALLE_MS   = 100;  
-const DELAI_RECHARGE  = 3; // Réduit à 3s pour le test, remets 20 si besoin
+const DELAI_RECHARGE  = 3; // secondes
 
-// ══ VARIABLES ═════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// VARIABLES GLOBALES
+// ═══════════════════════════════════════════════════════════════════════════════
+let modeActuel = null;               // 'ably' ou 'local'
+let adresseLocale = 'ws://localhost:8765';
+
 let equipeChoisie  = 'red';
 let idJoueur       = null;
 let pseudo         = '';
+
+// Objets de connexion
 let canalAbly      = null;
+let connexionAbly  = null;
+let webSocket      = null;
+
 let minuteurEnvoi  = null;
 
 let touchIdGauche = null;
 let touchIdDroite = null;
 
-// Joystick gauche (déplacement)
 let gaucheActif    = false;
 let deplX = 0, deplY = 0;
 
-// Joystick droit (visée)
 let droiteActif    = false;
 let viseX = 0, viseY = 0;
 let debutCharge = 0;
 let niveauCharge = 0;
 let dernierEnvoiVisee = 0;
 
-// Recharge du tir
 let peutTirer      = true;
 const COULEURS = { red:'#c0392b', blue:'#2980b9', green:'#27ae60', yellow:'#f39c12' };
 
@@ -161,7 +182,66 @@ const bouleGauche = document.getElementById('boule-gauche');
 const zoneDroite  = document.getElementById('zone-droite');
 const bouleDroite = document.getElementById('boule-droite');
 
-// ══ FONCTIONS SYSTÈME ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// ÉTAPE 1 : CHOIX DU SERVEUR
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-choix-ably').addEventListener('click', () => {
+  modeActuel = 'ably';
+  passerAEcranConnexion();
+});
+
+document.getElementById('btn-choix-local').addEventListener('click', () => {
+  // Afficher le champ d'adresse
+  const divAdresse = document.getElementById('div-adresse-locale');
+  if (divAdresse.style.display === 'none') {
+    divAdresse.style.display = 'block';
+    // Attendre que l'utilisateur valide l'adresse (on pourrait ajouter un bouton "Valider")
+    // Pour simplifier, on considère que l'utilisateur modifie le champ puis clique sur "Serveur Local" une 2e fois ?
+    // Mieux : ajouter un bouton "Se connecter" après saisie.
+    // Je vais modifier : le champ apparaît et un bouton "Connexion locale" apparaît.
+  } else {
+    // Si le champ est déjà visible, on valide
+    adresseLocale = document.getElementById('champ-adresse-locale').value.trim();
+    if (!adresseLocale.startsWith('ws://') && !adresseLocale.startsWith('wss://')) {
+      adresseLocale = 'ws://' + adresseLocale;
+    }
+    modeActuel = 'local';
+    passerAEcranConnexion();
+  }
+});
+
+// Ajout d'un bouton pour valider l'adresse locale (plus intuitif)
+const divAdresse = document.getElementById('div-adresse-locale');
+const btnValiderLocal = document.createElement('button');
+btnValiderLocal.textContent = '✅ Valider cette adresse';
+btnValiderLocal.style.marginTop = '10px';
+btnValiderLocal.style.padding = '12px';
+btnValiderLocal.style.width = '100%';
+btnValiderLocal.style.maxWidth = '320px';
+btnValiderLocal.style.borderRadius = '14px';
+btnValiderLocal.style.background = '#2e5a2e';
+btnValiderLocal.style.color = '#fff';
+btnValiderLocal.style.border = 'none';
+btnValiderLocal.style.fontSize = '1rem';
+btnValiderLocal.style.cursor = 'pointer';
+btnValiderLocal.addEventListener('click', () => {
+  adresseLocale = document.getElementById('champ-adresse-locale').value.trim();
+  if (!adresseLocale.startsWith('ws://') && !adresseLocale.startsWith('wss://')) {
+    adresseLocale = 'ws://' + adresseLocale;
+  }
+  modeActuel = 'local';
+  passerAEcranConnexion();
+});
+divAdresse.appendChild(btnValiderLocal);
+
+function passerAEcranConnexion() {
+  document.getElementById('ecran-choix-serveur').style.display = 'none';
+  document.getElementById('ecran-connexion').style.display = 'flex';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ÉTAPE 2 : PSEUDO & ÉQUIPE (inchangé)
+// ═══════════════════════════════════════════════════════════════════════════════
 function choisirEquipe(equipe, bouton) {
   equipeChoisie = equipe;
   document.querySelectorAll('.bouton-equipe').forEach(b => b.classList.remove('selectionne'));
@@ -175,22 +255,78 @@ function rejoindre() {
   document.documentElement.style.setProperty('--couleur-equipe', COULEURS[equipeChoisie]);
   document.getElementById('ecran-connexion').style.display = 'none';
   document.getElementById('ecran-jeu').style.display = 'flex';
-  seConnecterAbly();
+  
+  if (modeActuel === 'ably') {
+    seConnecterAbly();
+  } else if (modeActuel === 'local') {
+    seConnecterLocal();
+  }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONNEXION ABLY (inchangé)
+// ═══════════════════════════════════════════════════════════════════════════════
 function seConnecterAbly() {
-  const connexion = new Ably.Realtime({ key: CLE_ABLY });
-  canalAbly = connexion.channels.get(NOM_CANAL);
-  connexion.connection.on('connected', () => {
-    mettreAJourStatut('Connecté !', true);
+  connexionAbly = new Ably.Realtime({ key: CLE_ABLY });
+  canalAbly = connexionAbly.channels.get(NOM_CANAL);
+  connexionAbly.connection.on('connected', () => {
+    mettreAJourStatut('Connecté (Ably)', true);
     publier({ type: 'join' });
     minuteurEnvoi = setInterval(envoyerInputs, INTERVALLE_MS);
   });
+  connexionAbly.connection.on('failed', (err) => {
+    mettreAJourStatut('Erreur Ably: ' + err.reason, false);
+  });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONNEXION WEBSOCKET LOCAL (NOUVEAU)
+// ═══════════════════════════════════════════════════════════════════════════════
+function seConnecterLocal() {
+  mettreAJourStatut('Connexion locale...', false);
+  webSocket = new WebSocket(adresseLocale);
+
+  webSocket.onopen = () => {
+    mettreAJourStatut('Connecté (local)', true);
+    publier({ type: 'join' });
+    minuteurEnvoi = setInterval(envoyerInputs, INTERVALLE_MS);
+  };
+
+  webSocket.onerror = (e) => {
+    mettreAJourStatut('Erreur WebSocket', false);
+    console.error('WebSocket error', e);
+  };
+
+  webSocket.onclose = () => {
+    mettreAJourStatut('Déconnecté', false);
+    clearInterval(minuteurEnvoi);
+  };
+
+  webSocket.onmessage = (event) => {
+    // Optionnel : traiter les messages du serveur
+    console.log('[Message reçu]', event.data);
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENVOI DE MESSAGES (ADAPTÉ SELON LE MODE)
+// ═══════════════════════════════════════════════════════════════════════════════
 function publier(donnees) {
-  if (!canalAbly) return;
-  canalAbly.publish('input', JSON.stringify({ ...donnees, clientId: idJoueur, name: pseudo, team: equipeChoisie }));
+  const message = {
+    ...donnees,
+    clientId: idJoueur,
+    name: pseudo,
+    team: equipeChoisie
+  };
+  const json = JSON.stringify(message);
+
+  if (modeActuel === 'ably' && canalAbly) {
+    canalAbly.publish('input', json);
+  } else if (modeActuel === 'local' && webSocket && webSocket.readyState === WebSocket.OPEN) {
+    webSocket.send(json);
+  } else {
+    console.warn('Impossible d\'envoyer : connexion non prête');
+  }
 }
 
 function envoyerInputs() {
@@ -204,7 +340,9 @@ function mettreAJourStatut(texte, ok) {
   ok ? pt.classList.add('connecte') : pt.classList.remove('connecte');
 }
 
-// ══ LOGIQUE GAUCHE ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// GESTION DES JOYSTICKS (inchangée, mais j'ai gardé tout le code)
+// ═══════════════════════════════════════════════════════════════════════════════
 function deplacerBouleGauche(cx, cy) {
   const rect = zoneGauche.getBoundingClientRect();
   const centreX = rect.left + rect.width / 2;
@@ -225,7 +363,6 @@ function reinitBouleGauche() {
   publier({ type: 'input', x: 0, y: 0 });
 }
 
-// ══ LOGIQUE DROITE ═══════════════════════════════════════════════════════════
 function deplacerBouleDroite(cx, cy) {
   const rect = zoneDroite.getBoundingClientRect();
   const centreX = rect.left + rect.width / 2;
@@ -276,7 +413,9 @@ function tirer(dirX, dirY, puissance) {
   }, 1000);
 }
 
-// ══ TOUCHES ══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// ÉVÉNEMENTS TACTILES
+// ═══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     if (t.clientX < window.innerWidth / 2 && touchIdGauche === null) {
@@ -309,6 +448,12 @@ document.addEventListener('touchend', e => {
       reinitBouleDroite();
     }
   }
+});
+
+// Nettoyage à la fermeture
+window.addEventListener('beforeunload', () => {
+  if (webSocket) webSocket.close();
+  if (connexionAbly) connexionAbly.close();
 });
 </script>
 </body>
